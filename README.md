@@ -13,6 +13,14 @@ It has two halves that work together:
 You can run either half on its own, but they are best together: `kaia init`
 installs the persona, `kaia serve` powers it with retrieval.
 
+> **Scope note.** The **retrieval engine is repo-agnostic** — `kaia index` and
+> the `chen` MCP server work on any codebase. **Dr. Kaia Chen the persona is
+> not**: the bundled `/kaia` skill and the `CLAUDE.md`/`AGENTS.md` section are
+> tailored to the [Marcus](https://github.com/lwgray/marcus) multi-agent
+> coordination platform — her vocabulary, judgment, and examples assume that
+> domain. Using her well on another project means tailoring the skill. See
+> [Roadmap](#roadmap).
+
 ## Features
 
 - 🔍 **Semantic Search** — find code by meaning, not just keywords
@@ -109,6 +117,11 @@ claude mcp add chen \
 
 `kaia init` installs the **`/kaia` skill** into a project and wires it into the
 project's instruction files so Claude Code knows when to summon her.
+
+> The bundled skill is **Marcus-tuned** (see [Scope note](#kaia--a-codebase-rag-system--ai-architect-for-claude-code)).
+> After `kaia init`, the skill lives at `.claude/skills/kaia/SKILL.md` and the
+> inserted block lives in your `CLAUDE.md` / `AGENTS.md` — **all three are plain
+> files you can edit** to re-tailor her for your own project.
 
 ```bash
 cd ~/path/to/your/project
@@ -266,6 +279,24 @@ kaia/
     ├── unit/
     └── integration/
 ```
+
+## Roadmap
+
+The retrieval engine is already general-purpose. The persona is not — making
+Dr. Chen reusable beyond Marcus is the main planned work:
+
+- **Templated persona.** Turn the bundled `SKILL.md` and the
+  `CLAUDE.md`/`AGENTS.md` block into editable templates, so `kaia init` can
+  generate a persona tailored to the target project instead of shipping the
+  Marcus-specific one.
+- **Per-project persona config.** Let a project declare its domain, stack, and
+  conventions so the generated skill reflects them.
+- **Persona presets.** Ship more than one specialist (Marcus multi-agent today;
+  others later) and let `kaia init` pick.
+
+Until then, the practical path for a non-Marcus project is to run `kaia init`
+and then hand-edit `.claude/skills/kaia/SKILL.md` and the inserted
+`CLAUDE.md`/`AGENTS.md` block.
 
 ## License
 
