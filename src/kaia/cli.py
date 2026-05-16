@@ -248,5 +248,74 @@ def clear(
         console.print("Cancelled")
 
 
+def _read_package_data(*parts: str) -> str:
+    """Read a bundled data file shipped inside the kaia package."""
+    from importlib.resources import files
+
+    resource = files("kaia") / "data"
+    for part in parts:
+        resource = resource / part
+    return resource.read_text(encoding="utf-8")
+
+
+def _sync_section(target: Path, section: str) -> str:
+    """Insert or replace the KAIA section in target. Returns action taken."""
+    begin, end = "<!-- KAIA:BEGIN -->", "<!-- KAIA:END -->"
+    section = section.strip() + "\n"
+
+    if not target.exists():
+        target.write_text(section, encoding="utf-8")
+        return "created"
+
+    text = target.read_text(encoding="utf-8")
+    if begin in text and end in text:
+        before = text[: text.index(begin)]
+        after = text[text.index(end) + len(end) :]
+        target.write_text(before + section.rstrip("\n") + after, encoding="utf-8")
+        return "updated"
+
+    sep = "" if text.endswith("\n\n") else ("\n" if text.endswith("\n") else "\n\n")
+    target.write_text(text + sep + "\n" + section, encoding="utf-8")
+    return "appended"
+
+
+@app.command()
+def init(
+    directory: str = typer.Option(
+        ".", "--dir", "-d", help="Project directory to set up (default: current)"
+    ),
+) -> None:
+    """Install the Kaia Claude skill and wire it into CLAUDE.md / AGENTS.md.
+
+    Copies the bundled /kaia skill into .claude/skills/kaia/ and inserts the
+    Kaia AI-architect section into the project's CLAUDE.md and AGENTS.md.
+    Safe to re-run: the section is replaced in place via marker comments.
+    """
+    root = Path(directory).expanduser().resolve()
+    if not root.is_dir():
+        console.print(f"[red]Error: {root} is not a directory[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[bold]Installing Kaia into[/bold] {root}\n")
+
+    # 1. Install the skill
+    skill_dir = root / ".claude" / "skills" / "kaia"
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / "SKILL.md").write_text(
+        _read_package_data("skill", "SKILL.md"), encoding="utf-8"
+    )
+    console.print(f"[green]✓[/green] Skill installed → {skill_dir / 'SKILL.md'}")
+
+    # 2. Wire into CLAUDE.md and AGENTS.md
+    section = _read_package_data("kaia_claude_section.md")
+    for name in ("CLAUDE.md", "AGENTS.md"):
+        action = _sync_section(root / name, section)
+        console.print(f"[green]✓[/green] {name} {action}")
+
+    console.print(
+        "\n[bold green]Done.[/bold green] Use [cyan]/kaia[/cyan] in Claude Code."
+    )
+
+
 if __name__ == "__main__":
     app()
