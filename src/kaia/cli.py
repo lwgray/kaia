@@ -285,10 +285,11 @@ def init(
         ".", "--dir", "-d", help="Project directory to set up (default: current)"
     ),
 ) -> None:
-    """Install the Kaia Claude skill and wire it into CLAUDE.md / AGENTS.md.
+    """Install the Kaia skill for Claude Code and Codex.
 
-    Copies the bundled /kaia skill into .claude/skills/kaia/ and inserts the
-    Kaia AI-architect section into the project's CLAUDE.md and AGENTS.md.
+    Installs the bundled /kaia skill into both .claude/skills/kaia/
+    (Claude Code) and .agents/skills/kaia/ (Codex CLI), and inserts the
+    Kaia AI-architect section into CLAUDE.md and AGENTS.md.
     Safe to re-run: the section is replaced in place via marker comments.
     """
     root = Path(directory).expanduser().resolve()
@@ -298,22 +299,26 @@ def init(
 
     console.print(f"[bold]Installing Kaia into[/bold] {root}\n")
 
-    # 1. Install the skill
-    skill_dir = root / ".claude" / "skills" / "kaia"
-    skill_dir.mkdir(parents=True, exist_ok=True)
-    (skill_dir / "SKILL.md").write_text(
-        _read_package_data("skill", "SKILL.md"), encoding="utf-8"
-    )
-    console.print(f"[green]✓[/green] Skill installed → {skill_dir / 'SKILL.md'}")
+    skill_md = _read_package_data("skill", "SKILL.md")
 
-    # 2. Wire into CLAUDE.md and AGENTS.md
+    # 1. Install the skill for both Claude Code and Codex.
+    #    Both agents use the same SKILL.md format (name + description
+    #    frontmatter); only the skills directory differs.
+    for skills_root in (".claude/skills", ".agents/skills"):
+        skill_dir = root / skills_root / "kaia"
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        (skill_dir / "SKILL.md").write_text(skill_md, encoding="utf-8")
+        console.print(f"[green]✓[/green] Skill installed → {skill_dir / 'SKILL.md'}")
+
+    # 2. Wire into CLAUDE.md (Claude Code) and AGENTS.md (Codex).
     section = _read_package_data("kaia_claude_section.md")
     for name in ("CLAUDE.md", "AGENTS.md"):
         action = _sync_section(root / name, section)
         console.print(f"[green]✓[/green] {name} {action}")
 
     console.print(
-        "\n[bold green]Done.[/bold green] Use [cyan]/kaia[/cyan] in Claude Code."
+        "\n[bold green]Done.[/bold green] "
+        "Claude Code: [cyan]/kaia[/cyan]   Codex: [cyan]$kaia[/cyan] or [cyan]/skills[/cyan]"
     )
 
 
