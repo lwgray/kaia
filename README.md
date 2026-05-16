@@ -1,358 +1,266 @@
-# Kaia - RAG System for Marcus via MCP
+# Kaia — a codebase RAG system + AI architect for Claude Code
 
-**Kaia** is a Retrieval Augmented Generation (RAG) system that provides semantic search over the Marcus codebase through the Model Context Protocol (MCP). It enables Dr. Kaia Chen (your AI architect) to instantly look up implementation details, architectural patterns, and design decisions.
+**Kaia** gives Claude Code a semantic memory of your codebase and a senior
+AI-architect persona to reason with it.
+
+It has two halves that work together:
+
+| Half | What it is | Name you'll see |
+|------|------------|-----------------|
+| **The retrieval engine** | A RAG system that indexes your repos (code, docs, git history, PDFs) into a local vector store and exposes it over the Model Context Protocol (MCP). | the **`chen`** MCP server |
+| **The persona** | Dr. Kaia Chen — an AI architect, mentor, and reviewer skill for Claude Code. She grounds her advice in *your actual code* by calling the `chen` MCP tools. | the **`/kaia`** skill |
+
+You can run either half on its own, but they are best together: `kaia init`
+installs the persona, `kaia serve` powers it with retrieval.
+
+> **Scope note.** The **retrieval engine is repo-agnostic** — `kaia index` and
+> the `chen` MCP server work on any codebase. **Dr. Kaia Chen the persona is
+> not**: the bundled `/kaia` skill and the `CLAUDE.md`/`AGENTS.md` section are
+> tailored to the [Marcus](https://github.com/lwgray/marcus) multi-agent
+> coordination platform — her vocabulary, judgment, and examples assume that
+> domain. Using her well on another project means tailoring the skill. See
+> [Roadmap](#roadmap).
 
 ## Features
 
-- 🔍 **Semantic Search** - Find code by meaning, not just keywords
-- 📦 **Local Embeddings** - No API keys needed, uses sentence-transformers
-- 🚀 **Fast** - ~100-200ms query time with local embeddings
-- 🔒 **Private** - All data stays on your machine
-- 📊 **Multi-Granularity** - Indexes functions, classes, modules, docs, and git history
-- 🔌 **MCP Integration** - Works seamlessly with Claude Code
+- 🔍 **Semantic Search** — find code by meaning, not just keywords
+- 📦 **Local Embeddings** — no API keys, uses `sentence-transformers`
+- 🚀 **Fast** — ~100–200 ms query time
+- 🔒 **Private** — all data stays on your machine
+- 📊 **Multi-Granularity** — indexes functions, classes, modules, docs, git history, and PDFs
+- 🧑‍🏫 **AI Architect persona** — the `/kaia` skill, installed into any project with one command
+- 🔌 **MCP Integration** — works with Claude Code out of the box
 
 ## What Gets Indexed
 
-- **Python Code**: All `.py` files (functions, classes, modules)
-- **Documentation**: All `.md` files (CLAUDE.md, README.md, etc.)
-- **Git History**: Last 100 commits with messages and metadata
+- **Python code** — `.py` files (functions, classes, modules)
+- **Documentation** — `.md` files
+- **Git history** — recent commits with messages and metadata
+- **PDFs** — research papers and documents
 
 ## Installation
 
-### Prerequisites
-
-- Python 3.11+
-- Conda or virtualenv
-
-### Setup
+Requires **Python 3.11+**.
 
 ```bash
-# Clone/navigate to kaia directory
-cd ~/dev/kaia
+# From GitHub (recommended until a PyPI release is published)
+pip install git+https://github.com/lwgray/kaia.git
 
-# Create and activate conda environment
-conda create -n kaia python=3.11
-conda activate kaia
-
-# Install Kaia in editable mode
-pip install -e "."
+# Or from a local clone, in editable mode for development
+git clone https://github.com/lwgray/kaia.git
+cd kaia
+pip install -e ".[dev]"
 ```
 
-**First run**: sentence-transformers will download the ~80MB embedding model automatically.
+This installs the `kaia` command-line tool.
 
-## Quick Start
+> **First run:** `sentence-transformers` downloads a ~80 MB embedding model
+> automatically.
 
-### 1. Index the Marcus Codebase
+---
+
+## Part 1 — Use Kaia as a codebase search engine
+
+### 1. Index your repositories
 
 ```bash
-# Clear old database if upgrading from OpenAI embeddings
-python -m kaia.cli clear
+# Index a single repo
+kaia index -r ~/path/to/your/repo
 
-# Index Marcus
-python -m kaia.cli index --repo-path ~/dev/marcus
+# Index multiple repos at once
+kaia index -r ~/path/to/repo-a -r ~/path/to/repo-b
+
+# Also index a folder of PDFs
+kaia index -r ~/path/to/repo -p ~/path/to/papers
 ```
 
-**Expected output:**
-```
-Indexing Python code... ━━━━━━━━━━━━━━━━━━━━━━ 538/538 0:02:15
-Indexing documentation... ━━━━━━━━━━━━━━━━━━━━ 45/45   0:00:12
-Indexing git history...    ━━━━━━━━━━━━━━━━━━━ 1/1     0:00:05
-
-✓ Indexing complete!
-
-Category        Chunks    Files
-───────────────────────────────
-Python Code     6,235     538
-Documentation   348       45
-Git History     100       100 commits
-Total           6,683
-```
-
-### 2. Test Search
+### 2. Search from the CLI
 
 ```bash
-python -m kaia.cli search "task coordination"
+kaia search "how is authentication handled"
+kaia stats          # show how many chunks are indexed
+kaia clear          # wipe the index before re-indexing
+kaia clear --repo myrepo   # wipe just one repo's chunks
 ```
 
-### 3. Add to Claude Code as MCP Server
+### 3. Register the `chen` MCP server with Claude Code
 
-# Add it with the correct configuration (multi-repo: marcus, cato, marcus-mini, posidonius)
+```bash
+# Activate the environment kaia is installed into first, so $(which python) resolves correctly
 claude mcp add chen \
   --transport stdio \
-  --env KAIA_REPOS=/Users/lwgray/dev/marcus,/Users/lwgray/dev/cato,/Users/lwgray/dev/marcus-mini,/Users/lwgray/dev/posidonius \
-  -- /Users/lwgray/opt/anaconda3/envs/kaia/bin/python -m kaia.mcp_server
+  --env KAIA_REPOS="$HOME/path/to/repo-a,$HOME/path/to/repo-b" \
+  -- "$(which python)" -m kaia.mcp_server
 ```
 
-**Notes**:
-- Use the full absolute path to your kaia environment's Python.
-- `KAIA_REPOS` is comma-separated, no spaces. Each path is a repository root whose name (last path segment) becomes the `repository` filter value used by the MCP tools.
-- For backward compatibility, `MARCUS_ROOT=<single-path>` still works as a fallback if `KAIA_REPOS` is unset.
-- The env var only drives display in tool descriptions — actual searchable data lives in the persisted ChromaDB created by `kaia index`.
+**Notes**
+- Use the **absolute path** to the Python interpreter kaia is installed in.
+  `$(which python)` works if that environment is active.
+- `KAIA_REPOS` is comma-separated, **no spaces**. Each path's last segment
+  becomes the `repository` filter value used by the MCP tools.
+- `KAIA_REPOS` only drives display in tool descriptions — the searchable data
+  lives in the ChromaDB created by `kaia index`.
+- Restart Claude Code, then check the MCP panel: **`chen`** should show as
+  *Running*.
 
-### 4. Restart Claude Code
+#### MCP tools exposed
 
-Completely close and reopen Claude Code. The chen MCP server will auto-start.
+| Tool | Use it for |
+|------|-----------|
+| `search_marcus_architecture` | General "how does X work" questions, finding patterns |
+| `query_implementation_details` | The specific code of a named class/function/module |
+| `find_usage_examples` | Tests and usage examples for a component |
 
-### 5. Verify It's Working
+---
 
-Check the MCP servers panel in Claude Code. "chen" should show as **Running**.
+## Part 2 — Activate Dr. Kaia Chen in your project
 
-### 6. Use It!
+`kaia init` installs the **`/kaia` skill** into a project and wires it into the
+project's instruction files so Claude Code knows when to summon her.
 
-In Claude Code, ask questions like:
-
-```
-Chen, how does task coordination work in Marcus?
-
-Show me the TaskCoordinator implementation
-
-Find examples of error handling patterns in Marcus
-```
-
-## MCP Tools Available
-
-Kaia exposes three MCP tools:
-
-### 1. `search_marcus_architecture`
-Semantic search across the entire codebase.
-
-**Parameters:**
-- `query` (required): Search query
-- `top_k` (optional, default 10): Number of results
-- `file_filter` (optional): Filter by file path
-
-**Use for:** General architecture questions, finding patterns
-
-### 2. `query_implementation_details`
-Get specific implementation of a class, function, or module.
-
-**Parameters:**
-- `component` (required): Component name
-- `component_type` (optional): "class", "function", or "module"
-
-**Use for:** Looking up specific code
-
-### 3. `find_usage_examples`
-Find test files and usage examples.
-
-**Parameters:**
-- `component` (required): Component to find examples for
-
-**Use for:** Understanding how to use a class/function
-
-## CLI Commands
+> The bundled skill is **Marcus-tuned** (see [Scope note](#kaia--a-codebase-rag-system--ai-architect-for-claude-code)).
+> After `kaia init`, the skill lives at `.claude/skills/kaia/SKILL.md` and the
+> inserted block lives in your `CLAUDE.md` / `AGENTS.md` — **all three are plain
+> files you can edit** to re-tailor her for your own project.
 
 ```bash
-# Index codebase
-python -m kaia.cli index --repo-path ~/dev/marcus
-
-# Search indexed content
-python -m kaia.cli search "query text"
-
-# Show database statistics
-python -m kaia.cli stats
-
-# Clear database (before re-indexing)
-python -m kaia.cli clear
+cd ~/path/to/your/project
+kaia init
 ```
+
+This does three things, all **idempotent** (safe to re-run):
+
+1. Copies the `/kaia` skill to `.claude/skills/kaia/SKILL.md`
+2. Inserts the "AI Architect Partner" section into `CLAUDE.md`
+3. Inserts the same section into `AGENTS.md`
+
+(The inserted block is fenced with `<!-- KAIA:BEGIN -->` / `<!-- KAIA:END -->`
+markers, so re-running `kaia init` updates it in place instead of duplicating.)
+
+```bash
+# Set up a different directory
+kaia init --dir ~/path/to/other/project
+```
+
+### Using her
+
+Once a project has been `kaia init`-ed, invoke her in Claude Code:
+
+```
+/kaia how should I structure the retry logic here?
+/kaia --review
+/kaia --research vector database trade-offs
+/kaia --reflect
+/kaia --chat
+```
+
+Or just mention her by name — "ask Kaia", "what would Dr. Chen think?" — and
+Claude Code will invoke the skill.
+
+If the `chen` MCP server (Part 1) is also running, Kaia grounds her answers in
+your indexed codebase instead of guessing. **Persona + retrieval is the
+intended setup.**
+
+---
 
 ## Architecture
 
-### System Overview
-
 ```
-┌─────────────────────────────────────────┐
-│  Claude Code with Dr. Kaia Chen        │
-│  Ask: "How does X work in Marcus?"      │
-└─────────────────┬───────────────────────┘
-                  │ MCP Protocol (stdio)
-                  ▼
-┌─────────────────────────────────────────┐
-│    Kaia MCP Server                      │
-│  Tools: search_marcus_architecture()    │
-│         query_implementation_details()  │
-│         find_usage_examples()           │
-└─────────────────┬───────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────┐
-│  ChromaDB Vector Store                  │
-│  Indexed: Code, Docs, Git History       │
-│  Embeddings: sentence-transformers      │
-└─────────────────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│  Claude Code                                 │
+│   /kaia skill  ──►  Dr. Kaia Chen persona     │
+└───────────────┬───────────────────────────────┘
+                │ MCP Protocol (stdio)
+                ▼
+┌─────────────────────────────────────────────┐
+│  chen MCP server                              │
+│   search_marcus_architecture()                │
+│   query_implementation_details()              │
+│   find_usage_examples()                       │
+└───────────────┬───────────────────────────────┘
+                ▼
+┌─────────────────────────────────────────────┐
+│  ChromaDB vector store                        │
+│   Indexed: code, docs, git history, PDFs      │
+│   Embeddings: sentence-transformers           │
+└─────────────────────────────────────────────┘
 ```
 
-### Chunking Strategy
+### Chunking strategy
 
-- **Functions**: Entire function body (semantic chunking)
-- **Classes**: Class signature + docstring + method signatures
-- **Modules**: Module docstring + list of classes/functions
-- **Docs**: Section-by-section (heading-based)
-- **Git**: Per commit
+- **Functions** — entire function body
+- **Classes** — signature + docstring + method signatures
+- **Modules** — module docstring + class/function list
+- **Docs** — section-by-section (heading-based)
+- **Git** — per commit
 
-### Embedding Model
+### Embedding model
 
-- **Model**: `all-MiniLM-L6-v2` (sentence-transformers)
-- **Dimensions**: 384
-- **Quality**: 90-95% as good as OpenAI for code search
-- **Speed**: ~100-200ms for batch embeddings
-- **Cost**: Free (no API calls)
+- `all-MiniLM-L6-v2` (sentence-transformers), 384 dimensions
+- ~90–95% of OpenAI quality for code search, free, ~100–200 ms per query
 
 ### Storage
 
-- **Database**: ChromaDB (local vector database)
-- **Location**: `~/dev/kaia/data/chroma`
-- **Format**: Plaintext chunks + embeddings
-- **Size**: ~50-100MB for Marcus codebase
+- ChromaDB, local. Default location `./data/chroma`, override with
+  `CHROMA_PERSIST_DIR`.
 
-## Security Considerations
+## CLI Reference
 
-⚠️ **Do NOT share the vector database!**
-
-The database contains:
-- **Original code chunks** (plaintext, not encrypted)
-- **All indexed content** from your codebase
-
-If you have hardcoded API keys, passwords, or secrets in code/docs, they will be in the database.
-
-**What's indexed:**
-- ✅ All `.py` files (Python code)
-- ✅ All `.md` files (Markdown docs)
-- ✅ Git commit messages
-
-**What's skipped:**
-- `.venv`, `__pycache__`, `.git`, `node_modules`
-- `.pytest_cache`, `.mypy_cache`, `build`, `dist`
-
-**What's NOT skipped (potential risk):**
-- Hardcoded secrets in Python files
-- API keys in code comments
-- Credentials in markdown docs
-
-## Troubleshooting
-
-### MCP Server Shows "Failed" Status
-
-**Test manually:**
-```bash
-conda activate kaia
-export KAIA_REPOS=/Users/lwgray/dev/marcus,/Users/lwgray/dev/cato,/Users/lwgray/dev/marcus-mini,/Users/lwgray/dev/posidonius
-python -m kaia.mcp_server
-```
-
-Should print:
-```
-✓ Using existing index (6683 chunks). Configured repos: ['marcus', 'cato', 'marcus-mini', 'posidonius']
-Starting Kaia MCP server...
-```
-
-**Common issues:**
-1. Wrong Python path in `claude mcp add` command
-2. Kaia not installed (`pip install -e "."`)
-3. Neither `KAIA_REPOS` nor `MARCUS_ROOT` set
-4. Vector store empty — run `kaia index -r <repo> [-r <repo>...]` first
-
-### "Collection expecting embedding with dimension of 1536, got 384"
-
-**Cause**: Old OpenAI-based database still exists.
-
-**Fix:**
-```bash
-python -m kaia.cli clear
-python -m kaia.cli index --repo-path ~/dev/marcus
-```
-
-### "Batch size exceeds max batch size"
-
-**Cause**: ChromaDB batch size limit (already fixed in latest version).
-
-**Fix:** Pull latest code with batching support.
-
-### No Results Found
-
-**Re-index:**
-```bash
-python -m kaia.cli clear
-python -m kaia.cli index --repo-path ~/dev/marcus
-```
-
-### SyntaxWarning: "\d" is an invalid escape sequence
-
-**Harmless warning** from a dependency (markdown/pygments). Can be ignored.
-
-### BertModel LOAD REPORT: "embeddings.position_ids | UNEXPECTED"
-
-**Harmless warning** from sentence-transformers model loading. Can be ignored.
+| Command | Description |
+|---------|-------------|
+| `kaia index -r <repo> [-p <pdfs>]` | Index repos and/or PDF folders |
+| `kaia search "<query>"` | Search the index from the terminal |
+| `kaia serve [-r <repo>]` | Start the MCP server (also runnable via `python -m kaia.mcp_server`) |
+| `kaia stats` | Show indexed chunk count |
+| `kaia clear [--repo <name>]` | Clear the whole index, or one repo |
+| `kaia init [--dir <path>]` | Install the `/kaia` skill + wire `CLAUDE.md`/`AGENTS.md` |
 
 ## Configuration
 
-### Environment Variables
+| Env var | Purpose |
+|---------|---------|
+| `KAIA_REPOS` | Comma-separated repo roots (display only — data lives in the vector store) |
+| `MARCUS_ROOT` | Single-repo fallback when `KAIA_REPOS` is unset |
+| `CHROMA_PERSIST_DIR` | Vector database location (default `./data/chroma`) |
 
-- `KAIA_REPOS`: Comma-separated list of repository roots (e.g., `/Users/lwgray/dev/marcus,/Users/lwgray/dev/cato`). Used by the MCP server for display only — real data lives in the vector store.
-- `MARCUS_ROOT`: Single-repo fallback when `KAIA_REPOS` is unset (back-compat).
-- `CHROMA_PERSIST_DIR`: Database location (default: `./data/chroma`)
+## Security Considerations
 
-### Advanced: Custom Database Location
+⚠️ **Do not share the vector database.** Indexed chunks are stored as
+plaintext. If your code or docs contain hardcoded secrets, API keys, or
+credentials, those end up in the database.
 
-```bash
-export CHROMA_PERSIST_DIR=/custom/path/to/chroma
-python -m kaia.cli index --repo-path ~/dev/marcus
-```
+**Skipped automatically:** `.venv`, `__pycache__`, `.git`, `node_modules`,
+`.pytest_cache`, `.mypy_cache`, `build`, `dist`.
 
-## Performance
+**Not skipped:** secrets *inside* tracked source files — review before indexing
+shared or sensitive repos.
 
-**Indexing (one-time):**
-- 538 Python files: ~2-3 minutes
-- 45 Markdown files: ~10-15 seconds
-- 100 Git commits: ~5 seconds
-- **Total**: ~2-5 minutes
+## Troubleshooting
 
-**Querying (real-time):**
-- Embedding generation: ~50-100ms
-- Vector search: ~20-50ms
-- **Total**: ~100-200ms per query
-
-**Database size:**
-- Marcus codebase: ~50-100MB
-
-## Updating the Index
-
-When Marcus code changes:
+**`chen` MCP server shows "Failed".** Run it by hand to see the error:
 
 ```bash
-# Clear and re-index
-python -m kaia.cli clear
-python -m kaia.cli index --repo-path ~/dev/marcus
-
-# Restart Claude Code to pick up changes
+KAIA_REPOS="$HOME/path/to/repo" python -m kaia.mcp_server
 ```
+
+Common causes: wrong Python path in `claude mcp add`; kaia not installed in
+that interpreter; vector store empty (run `kaia index` first).
+
+**`Collection expecting embedding with dimension of 1536, got 384`.** An old
+OpenAI-based database exists — `kaia clear` then `kaia index` again.
+
+**No results found.** Re-index: `kaia clear` then `kaia index -r <repo>`.
+
+**`SyntaxWarning: invalid escape sequence` / `BertModel LOAD REPORT` warnings.**
+Harmless, from dependencies. Ignore.
 
 ## Development
 
-### Run Tests
-
 ```bash
-# All tests
-pytest
-
-# Unit tests only
-pytest tests/unit/
-
-# Integration tests
-pytest tests/integration/
-```
-
-### Type Checking
-
-```bash
-mypy src/kaia/
-```
-
-### Code Formatting
-
-```bash
-black src/kaia/
-isort src/kaia/
+pytest                 # all tests
+pytest tests/unit/     # unit tests only
+mypy src/kaia/         # type checking
+black src/kaia/ && isort src/kaia/   # formatting
 ```
 
 ## Project Structure
@@ -362,62 +270,40 @@ kaia/
 ├── src/kaia/
 │   ├── models.py           # Data models (chunks, metadata)
 │   ├── vector_store.py     # ChromaDB integration + batching
-│   ├── mcp_server.py       # MCP server with stdio transport
+│   ├── mcp_server.py       # MCP server (stdio transport)
 │   ├── indexer.py          # Indexing orchestrator
-│   ├── cli.py              # CLI interface
-│   └── extractors/
-│       ├── code_extractor.py    # Python AST parsing
-│       ├── doc_extractor.py     # Markdown parsing
-│       └── git_extractor.py     # Git history parsing
-├── tests/
-│   ├── unit/               # Fast, isolated tests
-│   └── integration/        # End-to-end tests
-└── data/
-    └── chroma/            # Vector database storage
+│   ├── cli.py              # CLI, including `kaia init`
+│   ├── data/               # Bundled /kaia skill + CLAUDE.md section
+│   └── extractors/         # Code / doc / git / PDF parsers
+└── tests/
+    ├── unit/
+    └── integration/
 ```
 
-## Technical Details
+## Roadmap
 
-### Why Local Embeddings?
+The retrieval engine is already general-purpose. The persona is not — making
+Dr. Chen reusable beyond Marcus is the main planned work:
 
-**Pros:**
-- ✅ Free (no API costs)
-- ✅ Fast (~100-200ms)
-- ✅ Private (no data sent to cloud)
-- ✅ No rate limits
+- **Templated persona.** Turn the bundled `SKILL.md` and the
+  `CLAUDE.md`/`AGENTS.md` block into editable templates, so `kaia init` can
+  generate a persona tailored to the target project instead of shipping the
+  Marcus-specific one.
+- **Per-project persona config.** Let a project declare its domain, stack, and
+  conventions so the generated skill reflects them.
+- **Persona presets.** Ship more than one specialist (Marcus multi-agent today;
+  others later) and let `kaia init` pick.
 
-**Cons:**
-- 90-95% quality vs OpenAI (good enough for code search)
-- Requires ~80MB model download (one-time)
-
-### Why Multi-Granularity Chunking?
-
-Different queries need different levels of detail:
-- "How does X work?" → Need full function implementation
-- "What does class Y do?" → Need class overview, not every method
-- "What's in module Z?" → Need high-level summary
-
-### Why ChromaDB?
-
-- Fast vector search
-- Local-first (no cloud dependency)
-- Simple Python API
-- Built-in persistence
-
-## Future Enhancements
-
-Potential improvements:
-- [ ] Max chunk size limits (prevent 1000+ line chunks)
-- [ ] Overlapping chunks for better retrieval
-- [ ] Content filtering for secrets/API keys
-- [ ] Incremental indexing (only changed files)
-- [ ] Support for other languages (JavaScript, TypeScript)
-- [ ] Hybrid search (semantic + keyword)
+Until then, the practical path for a non-Marcus project is to run `kaia init`
+and then hand-edit `.claude/skills/kaia/SKILL.md` and the inserted
+`CLAUDE.md`/`AGENTS.md` block.
 
 ## License
 
-MIT License - See Marcus project for details.
+MIT License.
 
 ## Credits
 
-Built for the [Marcus](https://github.com/lwgray/marcus) multi-agent coordination platform.
+Created by [@lwgray](https://github.com/lwgray). The `/kaia` persona was
+developed alongside the [Marcus](https://github.com/lwgray/marcus) multi-agent
+coordination platform.
