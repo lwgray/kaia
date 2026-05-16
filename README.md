@@ -1,4 +1,4 @@
-# Kaia — a codebase RAG system + AI architect for Claude Code
+# Kaia — a codebase RAG system + AI architect for Claude Code & Codex
 
 **Kaia** gives Claude Code a semantic memory of your codebase and a senior
 AI-architect persona to reason with it.
@@ -8,7 +8,7 @@ It has two halves that work together:
 | Half | What it is | Name you'll see |
 |------|------------|-----------------|
 | **The retrieval engine** | A RAG system that indexes your repos (code, docs, git history, PDFs) into a local vector store and exposes it over the Model Context Protocol (MCP). | the **`chen`** MCP server |
-| **The persona** | Dr. Kaia Chen — an AI architect, mentor, and reviewer skill for Claude Code. She grounds her advice in *your actual code* by calling the `chen` MCP tools. | the **`/kaia`** skill |
+| **The persona** | Dr. Kaia Chen — an AI architect, mentor, and reviewer skill for Claude Code *and* Codex CLI. She grounds her advice in *your actual code* by calling the `chen` MCP tools. | the **`/kaia`** skill |
 
 You can run either half on its own, but they are best together: `kaia init`
 installs the persona, `kaia serve` powers it with retrieval.
@@ -128,11 +128,14 @@ cd ~/path/to/your/project
 kaia init
 ```
 
-This does three things, all **idempotent** (safe to re-run):
+It sets up **both Claude Code and Codex CLI** — they use the same `SKILL.md`
+format, only the directory differs. All steps are **idempotent** (safe to
+re-run):
 
-1. Copies the `/kaia` skill to `.claude/skills/kaia/SKILL.md`
-2. Inserts the "AI Architect Partner" section into `CLAUDE.md`
-3. Inserts the same section into `AGENTS.md`
+1. Copies the skill to `.claude/skills/kaia/SKILL.md` (Claude Code)
+2. Copies the skill to `.agents/skills/kaia/SKILL.md` (Codex CLI)
+3. Inserts the "AI Architect Partner" section into `CLAUDE.md` (Claude Code)
+4. Inserts the same section into `AGENTS.md` (Codex CLI)
 
 (The inserted block is fenced with `<!-- KAIA:BEGIN -->` / `<!-- KAIA:END -->`
 markers, so re-running `kaia init` updates it in place instead of duplicating.)
@@ -144,18 +147,25 @@ kaia init --dir ~/path/to/other/project
 
 ### Using her
 
-Once a project has been `kaia init`-ed, invoke her in Claude Code:
+Once a project has been `kaia init`-ed, invoke her:
+
+**Claude Code** — `/kaia` slash command:
 
 ```
 /kaia how should I structure the retry logic here?
 /kaia --review
 /kaia --research vector database trade-offs
-/kaia --reflect
-/kaia --chat
 ```
 
-Or just mention her by name — "ask Kaia", "what would Dr. Chen think?" — and
-Claude Code will invoke the skill.
+**Codex CLI** — mention the skill with `$kaia` or pick it from `/skills`:
+
+```
+$kaia how should I structure the retry logic here?
+```
+
+Or in either tool, just mention her by name — "ask Kaia", "what would Dr. Chen
+think?" — and the agent invokes the skill implicitly (it matches the skill's
+`description`).
 
 If the `chen` MCP server (Part 1) is also running, Kaia grounds her answers in
 your indexed codebase instead of guessing. **Persona + retrieval is the
@@ -213,7 +223,7 @@ intended setup.**
 | `kaia serve [-r <repo>]` | Start the MCP server (also runnable via `python -m kaia.mcp_server`) |
 | `kaia stats` | Show indexed chunk count |
 | `kaia clear [--repo <name>]` | Clear the whole index, or one repo |
-| `kaia init [--dir <path>]` | Install the `/kaia` skill + wire `CLAUDE.md`/`AGENTS.md` |
+| `kaia init [--dir <path>]` | Install the `/kaia` skill for Claude Code + Codex (skills dirs + `CLAUDE.md`/`AGENTS.md`) |
 
 ## Configuration
 
